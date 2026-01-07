@@ -1,0 +1,11 @@
+# Ignora l'ambiente virtuale specifico
+supervisedNystrom_venv/
+
+# Ignora file temporanei e cache di Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints
+
+# Ignora file di sistema o estensioni
+.DS_Store
+*.pyspy

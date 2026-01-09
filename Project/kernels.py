@@ -4,7 +4,7 @@ from scipy.spatial.distance import cdist
 from numpy import linalg as la
 from numba import jit, prange
 
-@jit
+#@jit
 def gaussian_kernel(X:np.ndarray,Y:np.ndarray, r)->np.ndarray:
     '''
     Computes K, i.e., the gaussian kernel between every data in X€R^(n*d) and in Y€R^(m*d). Data are rows, in both matrices. K will be of dimension n x m
@@ -29,6 +29,7 @@ def gaussian_kernel_scipy_version(X:np.ndarray,Y:np.ndarray, r)->np.ndarray:
     Y = np.atleast_2d(Y)
     dist = cdist(X, Y, metric='sqeuclidean') #diretly computes the euclidean distance
     return np.exp(-dist / (r**2))
+
 @jit
 def gaussian_kernel_numba(X,Y,r):
     """

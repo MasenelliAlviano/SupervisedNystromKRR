@@ -185,24 +185,28 @@ def _A_time_x(K_nm,L_mm_tilde,x):
 def Blended_MP(X, labels, m, kernel, reg_param, initial_guess, kappa, eta, tau, **kwargs):
     n = labels.shape[0]
 
+    #preparing indexes tracking
     all_indexes = list(range(n))
-
     selected_indexes = [initial_guess]
     leftover_indexes = list(range(n))
     leftover_indexes.remove(initial_guess)
     number_of_active_atoms = len(selected_indexes)
 
+    #preparing data structures
     K_nm = np.zeros((n,m))
     K_nm[:,0] = np.reshape(kernel(X,X[selected_indexes[-1]]),(n,))
     alpha = np.zeros((m,))
 
+    #fitting wrt initial guess
     alpha[0] = Nystrom_fit(K_nm[:,0],K_nm[0,0],reg_param,labels)
 
+    #estimating the initial dual gap
     inner_product = inner_prod(selected_indexes,all_indexes,kernel,reg_param,n,labels,K_nm[:,0],X,alpha[0])
     phi = -np.max(np.abs(inner_product))/tau
     
-    for i in range(1,m):
-    #while number_of_active_atoms != m:
+    number_of_iterations = 1
+    #for i in range(1,m):
+    while number_of_iterations != m:
         #print(f"La stima del gap vale{phi}")
         #print(f"Abbiamo selezionato {number_of_active_atoms}")
 
@@ -225,8 +229,10 @@ def Blended_MP(X, labels, m, kernel, reg_param, initial_guess, kappa, eta, tau, 
                                                          selected_indexes
                                                          )
             num_stability_correction = 1000*np.spacing(1)*np.eye(number_of_active_atoms,number_of_active_atoms)
-            correction = cholesky_solve(K_nm[selected_indexes,:number_of_active_atoms]+num_stability_correction,weights_vector(alpha[:number_of_active_atoms],K_nm[:,:number_of_active_atoms],labels,n*reg_param,selected_indexes))
+            correction = cholesky_solve(K_nm[selected_indexes,:number_of_active_atoms]+num_stability_correction,compute_weights_vector(alpha[:number_of_active_atoms],K_nm[:,:number_of_active_atoms],labels,reg_param,selected_indexes))
             alpha[:number_of_active_atoms] += beta*correction
+
+            number_of_iterations += 1
         else:
             inner_product = inner_prod(selected_indexes,
                                        leftover_indexes,
@@ -248,54 +254,130 @@ def Blended_MP(X, labels, m, kernel, reg_param, initial_guess, kappa, eta, tau, 
                 selected_indexes.append(best_index)
                 leftover_indexes.remove(best_index)
                 number_of_active_atoms += 1
+                number_of_iterations += 1
             else:
                 phi = phi/tau
-    print(f"m vale {m} e ho selezionato {number_of_active_atoms} atomi")
+    print(f"m equals to {m} and I have selected {number_of_active_atoms} atoms using {number_of_iterations} iterations")
     return selected_indexes
-
-
 
 def inner_prod(selected_indexes, new_indexes, kernel, reg_param, n, labels, K_nm, X, alpha):
         """
 
         A function to ease the computation of expressions of the form <∇ε(f_m),v> for atom v in some set
-        In formulas, I compute K_n(x).T @ (K_nm @ alpha - y) + n* reg_param * K_m(x).T @ alpha 
+        In formulas, I compute 1/n * K_n(x).T @ (K_nm @ alpha - y) + reg_param * K_m(x).T @ alpha 
         where x identifies v
         should work with multiple vectors v --> already Vectorized 
 
         """
         w_total = np.atleast_1d(alpha)@np.atleast_2d(K_nm.T)
         w_total -= labels
-        w_total[selected_indexes] += alpha*n*reg_param
+        w_total /= n 
+        w_total[selected_indexes] += alpha*reg_param
         return w_total@kernel(X,X[new_indexes])
 
-#a function to compute the expression K_mn @ (y-K_nm @ alpha) + reg_constant*K_mm @ alpha
-def weights_vector(alpha,K_nm,labels,reg_constant,selected_indexes):
-    weights = labels - K_nm@alpha
-    term_1 = K_nm.T@weights
-    term_2 = reg_constant*K_nm[selected_indexes,:]@alpha
+def compute_weights_vector(alpha,K_nm,labels,reg_param,selected_indexes):
+    """
+    A function to compute the expression term_1 + term_2  = 1/n * K_mn @ (K_nm @ alpha - y) + reg_param*K_mm @ alpha 
+    """
+    n = labels.shape[0]
+    weights = K_nm@alpha - labels
+    term_1 = (K_nm.T@weights)/n
+    term_2 = reg_param*K_nm[selected_indexes,:]@alpha
     return term_1+term_2
 
 def opt_cost_function_over_projected_grad(alpha,K_nm,labels,n,reg_param,selected_indexes):
+
     num_stability_correction = 1000*np.spacing(1)*np.eye(len(selected_indexes),len(selected_indexes))
-    weights = weights_vector(alpha,K_nm,labels,n*reg_param,selected_indexes)
 
-    weigths_with_negative_reg_constant = weights_vector(alpha,K_nm,labels,-n*reg_param,selected_indexes)
+    weights = compute_weights_vector(alpha,K_nm,labels,reg_param,selected_indexes)
+    #weights_with_negative_reg_constant = compute_weights_vector(alpha,K_nm,labels,-reg_param,selected_indexes)
+    
     K_mm_inverse_times_weights = cholesky_solve(K_nm[selected_indexes,:]+num_stability_correction,weights)
-    num = weigths_with_negative_reg_constant@K_mm_inverse_times_weights
+    num = -weights@K_mm_inverse_times_weights
 
-    squared_norm_proj_grad = weights@K_mm_inverse_times_weights
+    squared_norm_proj_grad = -weights@K_mm_inverse_times_weights
     squared_norm_proj_grad_evaluated = np.sum((K_nm@K_mm_inverse_times_weights)**2) 
-    den = squared_norm_proj_grad_evaluated + n*reg_param*squared_norm_proj_grad 
+    den = squared_norm_proj_grad_evaluated / n + reg_param*squared_norm_proj_grad 
     return num/den
 
 def opt_cost_function_over_new_atom(alpha,K_nm,labels,n,reg_param,selected_indexes,new_index,K_nnew):
     weights = labels - K_nm@alpha
-    weights[selected_indexes] -= n*reg_param*alpha
+    weights /= n
+    weights[selected_indexes] -= reg_param*alpha
     num = weights@K_nnew 
-    den = np.sum(K_nnew**2) + n*reg_param*K_nnew[new_index]
+    den = np.sum(K_nnew**2) / n + reg_param*K_nnew[new_index]
     return num/den
 
+
+@register_strategy('Blended_MP_fully_corrective')
+def Blended_MP_fully_corrective(X, labels, m, kernel, reg_param, initial_guess, kappa, eta, tau, **kwargs):
+    n = labels.shape[0]
+
+    #preparing indexes tracking
+    all_indexes = list(range(n))
+    selected_indexes = [initial_guess]
+    leftover_indexes = list(range(n))
+    leftover_indexes.remove(initial_guess)
+    number_of_active_atoms = len(selected_indexes)
+
+    #preparing data structures
+    K_nm = np.zeros((n,m))
+    K_nm[:,0] = np.reshape(kernel(X,X[selected_indexes[-1]]),(n,))
+    alpha = np.zeros((m,))
+
+    #fitting wrt initial guess
+    alpha[0] = Nystrom_fit(K_nm[:,0],K_nm[0,0],reg_param,labels)
+
+    #estimating the initial dual gap
+    inner_product = inner_prod(selected_indexes,all_indexes,kernel,reg_param,n,labels,K_nm[:,0],X,alpha[0])
+    phi = -np.max(np.abs(inner_product))/tau
+    
+    number_of_iterations = 1
+    #for i in range(1,m):
+    while number_of_iterations != m:
+        #print(f"La stima del gap vale{phi}")
+        #print(f"Abbiamo selezionato {number_of_active_atoms}")
+
+        inner_product = inner_prod(selected_indexes,
+                                   selected_indexes,
+                                   kernel,
+                                   reg_param,
+                                   n,
+                                   labels,
+                                   K_nm[:,:number_of_active_atoms],
+                                   X,
+                                   alpha[:number_of_active_atoms]
+                                   )
+        if -np.max(np.abs(inner_product)) <= phi/eta:
+            num_stability_correction = 1000*np.spacing(1)*np.eye(number_of_active_atoms,number_of_active_atoms)
+            alpha[:number_of_active_atoms] = Nystrom_fit(K_nm[:,:number_of_active_atoms],K_nm[selected_indexes,:number_of_active_atoms], reg_param, labels)
+            number_of_iterations += 1
+        else:
+            inner_product = inner_prod(selected_indexes,
+                                       leftover_indexes,
+                                       kernel,
+                                       reg_param,
+                                       n,
+                                       labels,
+                                       K_nm[:,:number_of_active_atoms],
+                                       X,
+                                       alpha[:number_of_active_atoms]
+                                       )
+            if -np.max(np.abs(inner_product)) <= phi/kappa:
+                best_index = leftover_indexes[np.argmax(np.abs(inner_product))]
+                K_nm[:,number_of_active_atoms] = np.reshape(kernel(X,X[best_index]),(n,))
+
+                beta = opt_cost_function_over_new_atom(alpha[:number_of_active_atoms],K_nm[:,:number_of_active_atoms],labels,n,reg_param,selected_indexes,best_index,K_nm[:,number_of_active_atoms])
+                alpha[number_of_active_atoms] = beta
+                
+                selected_indexes.append(best_index)
+                leftover_indexes.remove(best_index)
+                number_of_active_atoms += 1
+                number_of_iterations += 1
+            else:
+                phi = phi/tau
+    print(f"m equals to {m} and I have selected {number_of_active_atoms} atoms using {number_of_iterations} iterations")
+    return selected_indexes
 
 
 

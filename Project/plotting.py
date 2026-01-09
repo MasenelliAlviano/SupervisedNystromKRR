@@ -119,6 +119,206 @@ def plot_risk_vs_number_of_nystrom_points(df, metric='test_risk', title='Risk Co
     plt.savefig(f"{save_path}_convergence_vs_number_of_nystrom_points.pdf")
     plt.show()
 
+def plot_single_strategy_cost_function(df, target_strategy='Blended_MP', metric_1='train_risk', metric_2='regularization_cost', metric_3='cost_function', title=None, baseline=None, save_path=None):
+    """
+    Plotta 3 metriche presenti nel dataframe per una singola strategia specifica.
+    Usa colori diversi per distinguere le metriche.
+    """
+    
+    # 1. FILTRO: Teniamo solo la strategia richiesta
+    subset = df[df['strategy'] == target_strategy].copy()
+    
+    if subset.empty:
+        print(f"Attenzione: Nessun dato trovato per la strategia '{target_strategy}'")
+        return
+
+    # 2. PREPARAZIONE LABELS: Rendiamo i nomi leggibili per la legenda
+    label_1 = metric_1.replace('_', ' ').title()
+    label_2 = metric_2.replace('_', ' ').title()
+    label_3 = metric_3.replace('_', ' ').title()
+    
+    # Mappa per rinominare le colonne originali con i label puliti
+    rename_map = {
+        metric_1: label_1, 
+        metric_2: label_2, 
+        metric_3: label_3
+    }
+    
+    # Rinominiamo le colonne nel subset
+    subset_renamed = subset.rename(columns=rename_map)
+
+    # 3. MELT: Trasformiamo il DF da 'largo' a 'lungo' per includere tutte e 3 le metriche
+    df_long = subset_renamed.melt(
+        id_vars=['number_of_nystrom_points'], 
+        # Qui passiamo le 3 colonne (che ora hanno i nomi puliti)
+        value_vars=[label_1, label_2, label_3],
+        var_name='Metric Type',
+        value_name='Value'
+    )
+
+    # 4. PLOTTING
+    plt.figure(figsize=(10, 7))
+    sns.set_style("whitegrid")
+
+    sns.lineplot(
+        data=df_long,
+        x='number_of_nystrom_points',
+        y='Value',
+        hue='Metric Type',   # Un colore diverso per ogni metrica (1, 2 e 3)
+        style='Metric Type', # Tratteggi diversi
+        markers=True,
+        dashes=True,
+        err_style='band',
+        linewidth=2.5,
+        markersize=9
+    )
+
+    # 5. BASELINE (Opzionale)
+    if baseline is not None:
+        plt.axhline(
+            y=baseline,
+            color='gray',
+            linestyle='--',
+            linewidth=2,
+            label='Baseline', # Puoi personalizzare es: f'Baseline ({label_1})'
+            alpha=0.7
+        )
+
+    # 6. SCALA E FORMATTAZIONE
+    plt.xscale('log')
+    plt.yscale('log')
+
+    if title is None:
+        title = f'Cost Function Analysis for {target_strategy}'
+    
+    plt.title(title, fontsize=16)
+    plt.xlabel(r'Number of Nystrom points ($m$)', fontsize=14)
+    plt.ylabel('Value (Log Scale)', fontsize=14)
+
+    # Gestione Ticks asse X (mostra solo i valori di m presenti nel dataset)
+    if not subset['number_of_nystrom_points'].empty:
+        unique_points = sorted(subset['number_of_nystrom_points'].unique())
+        plt.xticks(unique_points, unique_points)
+    
+    plt.grid(True, which="both", ls="-", alpha=0.5)
+    
+    # Legenda
+    plt.legend(title='Metrics', fontsize=12, title_fontsize=12)
+    
+    plt.tight_layout()
+    
+    # Salvataggio
+    if save_path:
+        # Pulisco il nome del file per evitare caratteri strani
+        clean_strategy = target_strategy.replace(" ", "_")
+        plt.savefig(f"{save_path}_{clean_strategy}_cost_function.pdf", bbox_inches='tight')
+        
+    plt.show()
+
+def plot_single_strategy_cost_function_separate_plots(df, target_strategy='Blended_MP', metric_1='train_risk', metric_2='regularization_cost', metric_3='cost_function', title=None, baseline=None, save_path=None):
+    """
+    Plotta 3 grafici distinti affiancati e annota il numero di atomi su ogni punto.
+    """
+    
+    # 1. FILTRO
+    subset = df[df['strategy'] == target_strategy].copy()
+    
+    if subset.empty:
+        print(f"Attenzione: Nessun dato trovato per la strategia '{target_strategy}'")
+        return
+
+    # 2. SETUP FIGURA
+    fig, axes = plt.subplots(1, 3, figsize=(24, 7), sharex=True)
+    sns.set_style("whitegrid")
+
+    metrics = [metric_1, metric_2, metric_3]
+    
+    titles = [
+        metric_1.replace('_', ' ').title(),
+        metric_2.replace('_', ' ').title(),
+        metric_3.replace('_', ' ').title()
+    ]
+
+    # 3. CICLO DI PLOTTING
+    for ax, metric, plot_title in zip(axes, metrics, titles):
+        
+        # Plot della linea con intervalli di confidenza
+        sns.lineplot(
+            data=subset,
+            x='tot_iterations',
+            y=metric,
+            color='tab:blue', 
+            marker='o',
+            markersize=8,
+            linewidth=2.5,
+            err_style='band',
+            ax=ax
+        )
+
+        # ---------------------------------------------------------
+        # ### SEZIONE AGGIUNTA: Annotazione Number of Atoms ###
+        # ---------------------------------------------------------
+        # Raggruppiamo per 'tot_iterations' per trovare la coordinata Y media (dove sta il pallino)
+        # e il valore di 'number_of_nystrom_points' corrispondente.
+        annot_data = subset.groupby('tot_iterations')[[metric, 'number_of_nystrom_points']].mean().reset_index()
+
+        for _, row in annot_data.iterrows():
+            x_coord = row['tot_iterations']
+            y_coord = row[metric]
+            # Assumiamo che gli atomi siano interi, li forziamo a int per togliere i decimali
+            n_atoms = int(row['number_of_nystrom_points']) 
+            
+            ax.text(
+                x_coord, 
+                y_coord, 
+                f" {n_atoms}",          # Il testo da scrivere (uno spazio prima per staccarlo)
+                fontsize=10,            # Grandezza testo
+                color='black',          # Colore testo
+                verticalalignment='bottom', # Posizione rispetto al punto (sopra)
+                horizontalalignment='left', # Posizione rispetto al punto (a destra)
+                fontweight='bold'       # Opzionale: grassetto per renderlo visibile
+            )
+        # ---------------------------------------------------------
+
+        # Formattazione
+        ax.set_title(plot_title, fontsize=16)
+        ax.set_xlabel(r'Number of iterations ($T$)', fontsize=14)
+        ax.set_ylabel(metric.replace('_', ' ').title(), fontsize=14)
+        
+        # Scale Logaritmiche
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        
+        # Ticks asse X
+        unique_points = sorted(subset['tot_iterations'].unique())
+        ax.set_xticks(unique_points)
+        ax.set_xticklabels(unique_points)
+        
+        ax.grid(True, which="both", ls="-", alpha=0.5)
+
+    # 4. BASELINE
+    if baseline is not None:
+        axes[2].axhline(
+            y=baseline,
+            color='black',
+            linestyle='--',
+            linewidth=2,
+            label='Baseline'
+        )
+        axes[2].legend(fontsize=12)
+
+    # 5. TITOLO E SALVATAGGIO
+    if title is None:
+        title = f'Analysis for {target_strategy}'
+    
+    plt.suptitle(title, fontsize=20, y=1.02)
+    plt.tight_layout()
+    
+    if save_path:
+        clean_strategy = target_strategy.replace(" ", "_")
+        plt.savefig(f"{save_path}_{clean_strategy}_annotated.pdf", bbox_inches='tight')
+    
+    plt.show()
 
 def plot_1D_fullKRR_vs_Nystrom(
     X_train, y_train,           # I dati di training (N,)

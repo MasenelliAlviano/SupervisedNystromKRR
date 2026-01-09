@@ -96,7 +96,7 @@ def single_experiment_1D(strat = "Blended_MP"):
     )
 
 r = 0.1
-kernel = partial(krnls.gaussian_kernel_scipy_version, r = r)
+kernel = partial(krnls.gaussian_kernel,r = r)#_scipy_version, r = r)
 rng = np.random.default_rng(1)
 
 

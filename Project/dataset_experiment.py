@@ -42,7 +42,8 @@ def experiment_risk_vs_m():
                 #compute risks
                 train_risk = model.risk(model.predict(X_train),labels_train)
                 test_risk = model.risk(model.predict(X_test),labels_test)
-                
+                regularization_cost = reg_param*model.alpha@model.predict(model.anchor_data)
+                cost_function = train_risk + regularization_cost
                 #saving results
                 record = {
                     'strategy': strategy,
@@ -50,7 +51,9 @@ def experiment_risk_vs_m():
                     'number_of_nystrom_points': model.alpha.size,
                     'repetition': rep,
                     'train_risk': train_risk,
-                    'test_risk': test_risk
+                    'test_risk': test_risk,
+                    'regularization_cost': regularization_cost,
+                    'cost_function': cost_function
                 }
                 results_log.append(record)
 
@@ -68,7 +71,7 @@ dataset_path = os.path.join(current_dir, 'dataset')
 
 data = np.loadtxt(dataset_path, delimiter=',')
 tot_data = data.shape[0]
-n = int(tot_data*0.5)
+n = int(tot_data*0.1)
 d = 5
 n_test = tot_data-n
 model = None
@@ -107,6 +110,8 @@ degrees_of_freedom = np.sum(Lambda/(Lambda+n*reg_param))
 alpha = utils_math.full_fit(K_nn, reg_param, labels=labels_train)
 train_risk_full_KRR = utils_math.risk(utils_math.predict(X_train = X_train,eval_point=X_train, alpha=alpha, kernel=kernel), labels_train)
 test_risk_full_KRR = utils_math.risk(utils_math.predict(X_train = X_train, eval_point=X_test, alpha=alpha, kernel=kernel), labels_test)
+cost_function_full_KRR = train_risk_full_KRR + reg_param*alpha@utils_math.predict(X_train = X_train,eval_point=X_train, alpha=alpha, kernel=kernel)
+
 
 print(f"Empirical risk of the full model is {train_risk_full_KRR}")
 print(f"Test risk of the full model is {test_risk_full_KRR}")
@@ -154,3 +159,17 @@ plotting.plot_risk_vs_number_of_nystrom_points(df_results,
                         title = 'Test risk evolution',
                         baseline = test_risk_full_KRR,
                         save_path = plots_dir / "Truedata" / "TestRisk")
+
+plotting.plot_single_strategy_cost_function(df = df_results,
+                                            title = "Cost function, risk and regularization terms decay",
+                                            baseline= cost_function_full_KRR,
+                                            save_path = plots_dir / "Truedata" / "Experiments"
+                                            )
+
+
+plotting.plot_single_strategy_cost_function_separate_plots(df = df_results,
+                                            title = "Cost function, risk and regularization terms decay",
+                                            baseline= cost_function_full_KRR,
+                                            save_path = plots_dir / "Truedata" / "Experiments"
+                                            )
+

@@ -88,7 +88,7 @@ def MAR(X,labels, m, kernel, reg_param, **kwargs):
         K_nm[:,i] = np.reshape(kernel(X,X[selected_indexes[-1]]), (n,))
     return selected_indexes
 
-#@register_strategy('MER')
+@register_strategy('MER')
 def MER(X, labels, m, kernel, reg_param, **kwargs):
     n = labels.shape[0]
 
@@ -307,7 +307,6 @@ def opt_cost_function_over_new_atom(alpha,K_nm,labels,n,reg_param,selected_index
     num = weights@K_nnew 
     den = np.sum(K_nnew**2) / n + reg_param*K_nnew[new_index]
     return num/den
-
 
 @register_strategy('Blended_MP_fully_corrective')
 def Blended_MP_fully_corrective(X, labels, m, kernel, reg_param, initial_guess, kappa, eta, tau, **kwargs):

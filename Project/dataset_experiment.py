@@ -71,7 +71,7 @@ dataset_path = os.path.join(current_dir, 'dataset')
 
 data = np.loadtxt(dataset_path, delimiter=',')
 tot_data = data.shape[0]
-n = int(tot_data*0.1)
+n = int(tot_data*0.8)
 d = 5
 n_test = tot_data-n
 model = None
@@ -171,5 +171,11 @@ plotting.plot_single_strategy_cost_function_separate_plots(df = df_results,
                                             title = "Cost function, risk and regularization terms decay",
                                             baseline= cost_function_full_KRR,
                                             save_path = plots_dir / "Truedata" / "Experiments"
+                                            )
+
+plotting.plot_single_strategy_cost_function_separate_plots(df = df_results,
+                                            title = "Cost function, risk and regularization terms decay",
+                                            baseline= cost_function_full_KRR,
+                                            save_path = plots_dir / "Truedata" / "Experiments", target_strategy='Blended_MP_fully_corrective'
                                             )
 
